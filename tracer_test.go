@@ -14,14 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/opentracing/opentracing-go"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/jkgx/tracing"
 
-	logrusx "github.com/jkgx/logrus"
+	"github.com/jkgx/logrus"
 
 	"go.elastic.co/apm/transport"
 )
@@ -74,19 +72,21 @@ func TestZipkinTracer(t *testing.T) {
 		assert.NotEmpty(t, spans[0].Id)
 		assert.NotEmpty(t, spans[0].TraceId)
 		assert.Equal(t, "testOperation", spans[0].Name)
-		assert.Equal(t, "ORY X", spans[0].LocalEndpoint.ServiceName)
+		assert.Equal(t, "Hydra", spans[0].LocalEndpoint.ServiceName)
 		assert.NotNil(t, spans[0].Tags["testTag"])
 		assert.Equal(t, "true", spans[0].Tags["testTag"])
 	}))
 	defer ts.Close()
 
-	_, err := tracing.New(logrusx.New("ory/x", "1"), &tracing.Config{
-		ServiceName: "ORY X",
-		Provider:    "zipkin",
-		Zipkin: &tracing.ZipkinConfig{
+	tracer := &tracing.Tracer{
+		ServiceName: "Hydra",
+		ZipkinConfig: &tracing.ZipkinConfig{
 			ServerURL: ts.URL,
 		},
-	})
+		Provider: "zipkin",
+		Logger:   logrus.New("Hydra", "1"),
+	}
+	err := tracer.Setup()
 	assert.NoError(t, err)
 
 	span := opentracing.GlobalTracer().StartSpan("testOperation")
@@ -106,7 +106,7 @@ func TestElastcApmTracer(t *testing.T) {
 		defer close(done)
 
 		switch r.URL.String() {
-		case "/config/v1/agents?service.name=ORY+X":
+		case "/config/v1/agents?service.name=PRIM+Identity":
 			break
 		case "/intake/v2/events":
 			body := decodeResponseBody(t, r)
@@ -116,7 +116,7 @@ func TestElastcApmTracer(t *testing.T) {
 			var metadata elasticMetadataRequest
 			err := json.Unmarshal(data[0], &metadata)
 			assert.NoError(t, err)
-			assert.Equal(t, "ORY X", metadata.Metadata.Service.Name)
+			assert.Equal(t, "PRIM Identy", metadata.Metadata.Service.Name)
 
 			var spans elasticSpanRequest
 			err = json.Unmarshal(data[1], &spans)
@@ -128,22 +128,22 @@ func TestElastcApmTracer(t *testing.T) {
 		default:
 			t.Fatalf("Unknown request:" + r.URL.String())
 		}
+
 	}))
 	defer ts.Close()
 
-	require.NoError(t, os.Setenv("ELASTIC_APM_SERVER_URL", ts.URL))
-	// Reset env vars in APM Library
-	_, err := transport.InitDefault()
-	require.NoError(t, err)
+	os.Setenv("ELASTIC_APM_SERVER_URL", ts.URL)
+	//Reset env vars in APM Library
+	transport.InitDefault()
 
-	_, err = tracing.New(logrusx.New("ory/x", "1"), &tracing.Config{
-		ServiceName: "ORY X",
+	tracer := &tracing.Tracer{
+		ServiceName: "PRIM Identity",
 		Provider:    "elastic-apm",
-		Zipkin: &tracing.ZipkinConfig{
-			ServerURL: ts.URL,
-		},
-	})
-	require.NoError(t, err)
+		Logger:      logrus.New("PRIM Identity", "1"),
+	}
+
+	err := tracer.Setup()
+	assert.NoError(t, err)
 
 	span := opentracing.GlobalTracer().StartSpan("testOperation")
 	span.SetTag("testTag", true)
@@ -176,7 +176,11 @@ func decodeResponseBody(t *testing.T, r *http.Request) []byte {
 		reader = r.Body
 	}
 	respBody, err := ioutil.ReadAll(reader)
-	require.NoError(t, err)
-	require.NoError(t, reader.Close())
+	if err != nil {
+		t.Fatal(err)
+		//return []byte{}
+	}
+	reader.Close()
+
 	return respBody
 }

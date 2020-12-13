@@ -5,8 +5,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/opentracing/opentracing-go/mocktracer"
@@ -17,10 +15,10 @@ import (
 )
 
 var mockedTracer *mocktracer.MockTracer
-var tracer = &tracing.Tracer{Config: &tracing.Config{
-	ServiceName: "PRIM Auth Test",
+var tracer *tracing.Tracer = &tracing.Tracer{
+	ServiceName: "PRIM Identity Test",
 	Provider:    "Mock Provider",
-}}
+}
 
 func init() {
 	mockedTracer = mocktracer.New()
@@ -82,7 +80,7 @@ func TestShouldContinueTraceIfAlreadyPresent(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "https://apis.somecompany.com/endpoint", nil)
 	carrier := opentracing.HTTPHeadersCarrier(request.Header)
 	// this request now contains a trace initiated by another service/process (e.g. an edge proxy that fronts Hydra)
-	require.NoError(t, mockedTracer.Inject(parentSpan.Context(), opentracing.HTTPHeaders, carrier))
+	mockedTracer.Inject(parentSpan.Context(), opentracing.HTTPHeaders, carrier)
 
 	next := func(rw http.ResponseWriter, _ *http.Request) {
 		rw.WriteHeader(http.StatusOK)
@@ -124,6 +122,7 @@ func TestShouldNotTraceHealthEndpoint(t *testing.T) {
 
 			spans := mockedTracer.FinishedSpans()
 			assert.Len(t, spans, 0)
+
 		})
 	}
 }
